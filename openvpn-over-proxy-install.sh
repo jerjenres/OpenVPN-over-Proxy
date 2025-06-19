@@ -556,9 +556,9 @@ coredump_dir /var/spool/squid
 http_access allow localhost
 http_access allow localhost manager
 # Deny packets which have a destination outside of whitelist
-http_access deny !OpenVPN_IP
+#http_access deny !OpenVPN_IP
 # Deny packets which want to connect to any other port than OpenVPN_port
-http_access deny CONNECT !OpenVPN_port
+#http_access deny CONNECT !OpenVPN_port
 http_access deny !OpenVPN_port
 http_access deny manager
 # TODO: add authentication
