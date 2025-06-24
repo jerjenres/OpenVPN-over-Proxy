@@ -20,8 +20,9 @@ This script is based on the great work of [Nyr and its contributors](https://git
 ## Installation
 Run the script and follow the assistant:
 
+#change to my username
 ``` bash
-sudo wget https://raw.githubusercontent.com/Null3rror/OpenVPN-over-Proxy/master/openvpn-over-proxy-install.sh -O openvpn-over-proxy-install.sh && sudo bash openvpn-over-proxy-install.sh
+sudo wget https://raw.githubusercontent.com/jerjenres/OpenVPN-over-Proxy/master/openvpn-over-proxy-install.sh -O openvpn-over-proxy-install.sh && sudo bash openvpn-over-proxy-install.sh
 ```
 
 Once it ends, you can run it again to add more users, remove some of them or even completely uninstall OpenVPN over HTTP.
