@@ -518,7 +518,6 @@ persist-tun
 remote-cert-tls server
 auth none
 cipher none
-setenv CLIENT_CERT 0
 ignore-unknown-option block-outside-dns
 block-outside-dns
 verb 3" >> /etc/openvpn/server/client-common.txt
