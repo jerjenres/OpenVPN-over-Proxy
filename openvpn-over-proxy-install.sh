@@ -516,8 +516,9 @@ nobind
 persist-key
 persist-tun
 remote-cert-tls server
-auth SHA512
-cipher AES-256-CBC
+auth none
+cipher none
+setenv CLIENT_CERT 0
 ignore-unknown-option block-outside-dns
 block-outside-dns
 verb 3" >> /etc/openvpn/server/client-common.txt
@@ -556,7 +557,7 @@ coredump_dir /var/spool/squid
 http_access allow localhost
 http_access allow localhost manager
 # Deny packets which have a destination outside of whitelist
-#http_access deny !OpenVPN_IP
+http_access deny !OpenVPN_IP
 # Deny packets which want to connect to any other port than OpenVPN_port
 #http_access deny CONNECT !OpenVPN_port
 http_access deny !OpenVPN_port
