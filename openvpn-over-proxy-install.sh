@@ -412,7 +412,9 @@ server 10.8.0.0 255.255.255.0" > /etc/openvpn/server/server.conf
 		;;
 	esac
 	echo 'push "block-outside-dns"' >> /etc/openvpn/server/server.conf
-	echo "keepalive 10 120
+	echo "duplicate-cn
+
+keepalive 10 120	
 cipher none
 user nobody
 group $group_name
@@ -530,48 +532,39 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 	if [[ "$setupHTTPProxy" = "true" && "$os" != "none" ]]; then
 		apt-get update
 		apt-get install squid -y
-		cat /dev/null > /etc/squid/whitelistIPs.txt
-		cat /dev/null > /etc/squid/blacklistIPs.txt
 		cp /etc/squid/squid.conf /etc/squid/squid.conf.orig
-		echo "# Allow IP sources which have an IP in whitelistSrcs
-acl whitelistSrcs src \"/etc/squid/whitelistIPs.txt\"
-# Block IP sources which have been marked in blacklist
-acl blacklistSrcs src \"/etc/squid/blacklistIPs.txt\"
+
+		# Write the new, secure configuration for OpenVPN tunneling
+		echo "# This Squid configuration is tailored for OpenVPN tunneling.
+# It only allows the CONNECT method on the OpenVPN port, preventing abuse.
+
+# Define the method used by OpenVPN to tunnel through the proxy
 acl CONNECT method CONNECT
-acl localnet src 0.0.0.1-0.255.255.255  # RFC 1122 \"this\" network (LAN)
-acl localnet src 10.0.0.0/8             # RFC 1918 local private network (LAN)
-acl localnet src 100.64.0.0/10          # RFC 6598 shared address space (CGN)
-acl localnet src 169.254.0.0/16         # RFC 3927 link-local (directly plugged) machines
-acl localnet src 172.16.0.0/12          # RFC 1918 local private network (LAN)
-acl localnet src 192.168.0.0/16         # RFC 1918 local private network (LAN)
-acl localnet src fc00::/7               # RFC 4193 local private network range
-acl localnet src fe80::/10              # RFC 4291 link-local (directly plugged) machines
 
-# Since our OpenVPN server is listening to $ip:$port
+# Define the port our OpenVPN server is listening on.
+# Note: $port is the OpenVPN server port (e.g., 1194), NOT the proxy port.
 acl OpenVPN_port port $port
-acl OpenVPN_IP dst $ip
 
+# --- ACCESS RULES ---
+# Rules are checked in order. The first match wins.
+
+# 1. Allow CONNECT requests that are trying to reach our OpenVPN server port.
+#    This is the key rule. It allows the connection regardless of the hostname used.
+http_access allow CONNECT OpenVPN_port
+
+# 2. Deny all other requests.
+#    This is the firewall that prevents your proxy from being used for anything else.
+http_access deny all
+
+# --- CONFIGURATION ---
+# Set the port for Squid to listen on
+http_port $proxy_port
+
+# Set the coredump directory
 coredump_dir /var/spool/squid
 
-http_access allow localhost
-http_access allow localhost manager
-# Deny packets which have a destination outside of whitelist
-http_access deny !OpenVPN_IP
-# Deny packets which want to connect to any other port than OpenVPN_port
-#http_access deny CONNECT !OpenVPN_port
-http_access deny !OpenVPN_port
-http_access deny manager
-# TODO: add authentication
-http_access allow all
-http_port $proxy_port
-refresh_pattern .               0       20%     4320
-refresh_pattern ^ftp:           1440    20%     10080
-refresh_pattern ^gopher:        1440    0%      1440
-refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
-refresh_pattern \/InRelease\$ 0 0% 0 refresh-ims
-refresh_pattern \/(Packages|Sources)(|\.bz2|\.gz|\.xz)\$ 0 0% 0 refresh-ims
-refresh_pattern \/Release(|\.gpg)\$ 0 0% 0 refresh-ims
-refresh_pattern \/(Translation-.*)(|\.bz2|\.gz|\.xz)\$ 0 0% 0 refresh-ims" > /etc/squid/squid.conf
+# Turn off verbose refresh patterns for this use case
+refresh_pattern . 0 20% 4320" > /etc/squid/squid.conf
 	systemctl restart squid
 	fi
 	echo
