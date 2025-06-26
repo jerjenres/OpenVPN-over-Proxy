@@ -430,6 +430,14 @@ crl-verify crl.pem" >> /etc/openvpn/server/server.conf
 	echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/30-openvpn-forward.conf
 	# Enable without waiting for a reboot or service restart
 	echo 1 > /proc/sys/net/ipv4/ip_forward
+
+	# Add TCP keepalive settings for connection stability through NAT/firewalls
+	echo 'net.ipv4.tcp_keepalive_time=120
+net.ipv4.tcp_keepalive_intvl=30
+net.ipv4.tcp_keepalive_probes=8' > /etc/sysctl.d/60-tcp-keepalive.conf
+	# Apply all sysctl settings without needing a reboot
+	sysctl --system
+	
 	if [[ -n "$ip6" ]]; then
 		# Enable net.ipv6.conf.all.forwarding for the system
 		echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.d/30-openvpn-forward.conf
