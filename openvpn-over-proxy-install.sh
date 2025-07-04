@@ -358,9 +358,9 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 	# Instead of using vars file with EASYRSA_PASSOUT, use environment variables
 	export EASYRSA_BATCH="1"
 	export EASYRSA_REQ_CN="OpenVPN-CA"
-
-	# Build CA without password (use environment variable instead of vars file)
-	EASYRSA_BATCH=1 ./easyrsa build-ca nopass
+	export EASYRSA_PASSIN="pass:"  # Explicitly set empty password
+	export EASYRSA_PASSOUT="pass:" # Explicitly set empty password
+	./easyrsa build-ca nopass
 
 	# Build server certificate
 	EASYRSA_BATCH=1 EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-server-full server nopass
