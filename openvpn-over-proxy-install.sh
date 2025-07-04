@@ -545,6 +545,7 @@ persist-tun
 auth none
 cipher none
 ignore-unknown-option block-outside-dns
+setenv CLIENT_CERT 0
 block-outside-dns
 verb 3" >> /etc/openvpn/server/client-common.txt
 	# Detect the correct OpenVPN service name
