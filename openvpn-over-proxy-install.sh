@@ -86,15 +86,11 @@ new_client () {
 	echo "<ca>"
 	cat /etc/openvpn/server/easy-rsa/pki/ca.crt
 	echo "</ca>"
-	echo "<cert>"
-	sed -ne '/BEGIN CERTIFICATE/,$ p' /etc/openvpn/server/easy-rsa/pki/issued/"$client".crt
-	echo "</cert>"
-	echo "<key>"
-	cat /etc/openvpn/server/easy-rsa/pki/private/"$client".key
-	echo "</key>"
-	echo "<tls-crypt>"
-	sed -ne '/BEGIN OpenVPN Static key/,$ p' /etc/openvpn/server/tc.key
-	echo "</tls-crypt>"
+
+	echo "<auth-user-pass>"
+	echo "$vpn_user"
+	echo "$vpn_password"
+	echo "</auth-user-pass>"
 	} > ~/"$client".ovpn
 }
 
@@ -290,6 +286,22 @@ if [[ ! -e /etc/openvpn/server/server.conf ]]; then
 	# Allow a limited set of characters to avoid conflicts
 	client=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_client")
 	[[ -z "$client" ]] && client="client"
+	# --- ADDED: Prompt for the initial administrative user ---
+	echo
+	echo "You need to create the first user account."
+	read -p "Enter username for the first user: " vpn_user
+	until [[ -n "$vpn_user" ]]; do
+		echo "Username cannot be empty."
+		read -p "Enter username for the first user: " vpn_user
+	done
+	read -s -p "Enter password for this user: " vpn_password
+	until [[ -n "$vpn_password" ]]; do
+		echo
+		echo "Password cannot be empty."
+		read -s -p "Enter password for this user: " vpn_password
+	done
+	echo
+	# --- END ADDED BLOCK ---
 	echo
 	echo "OpenVPN installation is ready to begin."
 	# Install a firewall in the rare case where one is not already available
@@ -313,18 +325,26 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 	fi
 	if [[ "$os" = "debian" || "$os" = "ubuntu" ]]; then
 		apt-get update
-		apt-get install -y openvpn openssl ca-certificates $firewall
+		apt-get install -y openvpn openssl ca-certificates $firewall openvpn-plugin-auth-pam
 	elif [[ "$os" = "centos" ]]; then
 		yum install -y epel-release
-		yum install -y openvpn openssl ca-certificates tar $firewall
+		yum install -y openvpn openssl ca-certificates $firewall openvpn-plugin-auth-pam
 	else
 		# Else, OS must be Fedora
-		dnf install -y openvpn openssl ca-certificates tar $firewall
+		dnf install -y openvpn openssl ca-certificates $firewall openvpn-plugin-auth-pam
 	fi
 	# If firewalld was just installed, enable it
 	if [[ "$firewall" == "firewalld" ]]; then
 		systemctl enable --now firewalld.service
 	fi
+
+	# Create a group for our VPN users to make management easier
+	groupadd vpnusers &>/dev/null
+
+	# Create the first VPN user in the system
+	useradd -M -s /usr/sbin/nologin -g vpnusers "$vpn_user"
+	echo "$vpn_user:$vpn_password" | chpasswd
+
 	# Get easy-rsa
 	easy_rsa_url='https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.8/EasyRSA-3.0.8.tgz'
 	mkdir -p /etc/openvpn/server/easy-rsa/
@@ -335,16 +355,8 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 	./easyrsa init-pki
 	./easyrsa --batch build-ca nopass
 	EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-server-full server nopass
-	EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-client-full "$client" nopass
-	EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl
 	# Move the stuff we need
-	cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key pki/crl.pem /etc/openvpn/server
-	# CRL is read with each client connection, while OpenVPN is dropped to nobody
-	chown nobody:"$group_name" /etc/openvpn/server/crl.pem
-	# Without +x in the directory, OpenVPN can't run a stat() on the CRL file
-	chmod o+x /etc/openvpn/server/
-	# Generate key for tls-crypt
-	openvpn --genkey --secret /etc/openvpn/server/tc.key
+	cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key /etc/openvpn/server
 	# Create the DH parameters file using the predefined ffdhe2048 group
 	echo '-----BEGIN DH PARAMETERS-----
 MIIBCAKCAQEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz
@@ -364,9 +376,18 @@ cert server.crt
 key server.key
 dh dh.pem
 auth none
-tls-crypt tc.key
 topology subnet
-server 10.8.0.0 255.255.255.0" > /etc/openvpn/server/server.conf
+server 10.8.0.0 255.255.255.0
+
+# --- USERNAME/PASSWORD AUTHENTICATION ---
+plugin /usr/lib/openvpn/openvpn-plugin-auth-pam.so /etc/pam.d/login
+client-cert-not-required
+username-as-common-name
+duplicate-cn
+# --- END USERNAME/PASSWORD AUTHENTICATION ---
+
+ifconfig-pool-persist ipp.txt" > /etc/openvpn/server/server.conf
+
 	# IPv6
 	if [[ -z "$ip6" ]]; then
 		echo 'push "redirect-gateway def1 bypass-dhcp"' >> /etc/openvpn/server/server.conf
@@ -374,18 +395,14 @@ server 10.8.0.0 255.255.255.0" > /etc/openvpn/server/server.conf
 		echo 'server-ipv6 fddd:1194:1194:1194::/64' >> /etc/openvpn/server/server.conf
 		echo 'push "redirect-gateway def1 ipv6 bypass-dhcp"' >> /etc/openvpn/server/server.conf
 	fi
-	echo 'ifconfig-pool-persist ipp.txt' >> /etc/openvpn/server/server.conf
 	# DNS
 	case "$dns" in
 		1|"")
-			# Locate the proper resolv.conf
-			# Needed for systems running systemd-resolved
 			if grep -q '^nameserver 127.0.0.53' "/etc/resolv.conf"; then
 				resolv_conf="/run/systemd/resolve/resolv.conf"
 			else
 				resolv_conf="/etc/resolv.conf"
 			fi
-			# Obtain the resolvers from resolv.conf and use them for OpenVPN
 			grep -v '^#\|^;' "$resolv_conf" | grep '^nameserver' | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' | while read line; do
 				echo "push \"dhcp-option DNS $line\"" >> /etc/openvpn/server/server.conf
 			done
@@ -412,17 +429,15 @@ server 10.8.0.0 255.255.255.0" > /etc/openvpn/server/server.conf
 		;;
 	esac
 	echo 'push "block-outside-dns"' >> /etc/openvpn/server/server.conf
-	echo "duplicate-cn
-
-keepalive 10 120	
+	echo "keepalive 10 120
 cipher none
 user nobody
 group $group_name
 persist-key
 persist-tun
 status openvpn-status.log
-verb 3
-crl-verify crl.pem" >> /etc/openvpn/server/server.conf
+verb 3" >> /etc/openvpn/server/server.conf
+
 	if [[ "$protocol" = "udp" ]]; then
 		echo "explicit-exit-notify" >> /etc/openvpn/server/server.conf
 	fi
@@ -516,7 +531,8 @@ WantedBy=multi-user.target" >> /etc/systemd/system/openvpn-iptables.service
 	# client-common.txt is created so we have a template to add further users later
 	echo "client
 dev tun
-proto $protocol" > /etc/openvpn/server/client-common.txt
+proto $protocol
+auth-user-pass" > /etc/openvpn/server/client-common.txt
 	if [[ "$useHTTPProxy" = "true" ]]; then
 		echo "http-proxy $proxy_ip $proxy_port" >> /etc/openvpn/server/client-common.txt
 	fi
@@ -525,7 +541,6 @@ resolv-retry infinite
 nobind
 persist-key
 persist-tun
-remote-cert-tls server
 auth none
 cipher none
 ignore-unknown-option block-outside-dns
@@ -584,7 +599,7 @@ else
 	echo
 	echo "Select an option:"
 	echo "   1) Add a new client"
-	echo "   2) Revoke an existing client"
+	echo "   2) Delete an existing user"
 	echo "   3) Remove OpenVPN"
 	echo "   4) Exit"
 	read -p "Option: " option
@@ -595,59 +610,104 @@ else
 	case "$option" in
 		1)
 			echo
-			echo "Provide a name for the client:"
-			read -p "Name: " unsanitized_client
-			client=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_client")
-			while [[ -z "$client" || -e /etc/openvpn/server/easy-rsa/pki/issued/"$client".crt ]]; do
-				echo "$client: invalid name."
-				read -p "Name: " unsanitized_client
-				client=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_client")
+			echo "Provide a new username:"
+			read -p "Username: " username
+			# Check if the username is empty or already exists
+			while [[ -z "$username" || id -u "$username" &>/dev/null ]]; do
+				echo "Invalid username or user already exists."
+				read -p "Username: " username
 			done
-			cd /etc/openvpn/server/easy-rsa/
-			EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-client-full "$client" nopass
-			# Generates the custom client.ovpn
-			new_client
+
+			# Ask for a password for the new user
+			read -s -p "Enter a password for $username: " password
+			until [[ -n "$password" ]]; do
+				echo
+				echo "Password cannot be empty."
+				read -s -p "Enter a password for $username: " password
+			done
 			echo
-			echo "$client added. Configuration available in:" ~/"$client.ovpn"
+
+			# --- ADDED: Prompt for account validity ---
+			echo
+			echo "Set an expiration time for this user (leave blank or 0 for never)."
+			read -p "Days: " days
+			read -p "Hours: " hours
+			read -p "Minutes: " minutes
+
+			# Default to 0 if input is empty
+			days=${days:-0}
+			hours=${hours:-0}
+			minutes=${minutes:-0}
+			# --- END ADDED BLOCK ---
+
+			expire_date_cmd=""
+			total_minutes=$((days * 1440 + hours * 60 + minutes))
+
+			if [[ "$total_minutes" -gt 0 ]]; then
+				# Calculate the future date and format it as YYYY-MM-DD
+				expire_date=$(date -d "+$days days $hours hours $minutes minutes" +%Y-%m-%d)
+				expire_date_cmd="-e $expire_date"
+				echo "User '$username' will expire on: $expire_date"
+			else
+				echo "User '$username' will not expire."
+			fi
+
+			# Create the user in the system with or without the expiration date
+			useradd -M -s /usr/sbin/nologin -g vpnusers $expire_date_cmd "$username"
+			echo "$username:$password" | chpasswd
+
+			# Generate a new .ovpn file for this specific user
+			{
+			cat /etc/openvpn/server/client-common.txt
+			echo "<auth-user-pass>"
+			echo "$username"
+			 "$password"
+			echo "</auth-user-pass>"
+			echo
+			echo "<ca>"
+			cat /etc/openvpn/server/easy-rsa/pki/ca.crt
+			echo "</ca>"
+
+			} > ~/"$username".ovpn
+
+			echo
+			echo "User '$username' was added. Their configuration file is available at:" ~/"$username.ovpn"
 			exit
 		;;
 		2)
-			# This option could be documented a bit better and maybe even be simplified
-			# ...but what can I say, I want some sleep too
-			number_of_clients=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep -c "^V")
-			if [[ "$number_of_clients" = 0 ]]; then
+			# Get the list of users in the vpnusers group
+			mapfile -t user_list < <(getent group vpnusers | cut -d: -f4 | sed 's/,/\n/g' | grep -v '^$')
+			number_of_users=${#user_list[@]}
+
+			if [[ "$number_of_users" = 0 ]]; then
 				echo
-				echo "There are no existing clients!"
+				echo "There are no VPN users to delete!"
 				exit
 			fi
 			echo
-			echo "Select the client to revoke:"
-			tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d '=' -f 2 | nl -s ') '
-			read -p "Client: " client_number
-			until [[ "$client_number" =~ ^[0-9]+$ && "$client_number" -le "$number_of_clients" ]]; do
-				echo "$client_number: invalid selection."
-				read -p "Client: " client_number
+			echo "Select the user to delete:"
+			# Display the list of users
+			for i in "${!user_list[@]}"; do
+				printf "   %s) %s\n" "$((i+1))" "${user_list[$i]}"
 			done
-			client=$(tail -n +2 /etc/openvpn/server/easy-rsa/pki/index.txt | grep "^V" | cut -d '=' -f 2 | sed -n "$client_number"p)
+			read -p "User: " user_number
+			until [[ "$user_number" =~ ^[0-9]+$ && "$user_number" -ge 1 && "$user_number" -le "$number_of_users" ]]; do
+				echo "$user_number: invalid selection."
+				read -p "User: " user_number
+			done
+
+			user_to_delete="${user_list[$((user_number-1))]}"
+
 			echo
-			read -p "Confirm $client revocation? [y/N]: " revoke
-			until [[ "$revoke" =~ ^[yYnN]*$ ]]; do
-				echo "$revoke: invalid selection."
-				read -p "Confirm $client revocation? [y/N]: " revoke
-			done
-			if [[ "$revoke" =~ ^[yY]$ ]]; then
-				cd /etc/openvpn/server/easy-rsa/
-				./easyrsa --batch revoke "$client"
-				EASYRSA_CRL_DAYS=3650 ./easyrsa gen-crl
-				rm -f /etc/openvpn/server/crl.pem
-				cp /etc/openvpn/server/easy-rsa/pki/crl.pem /etc/openvpn/server/crl.pem
-				# CRL is read with each client connection, when OpenVPN is dropped to nobody
-				chown nobody:"$group_name" /etc/openvpn/server/crl.pem
+			read -p "Confirm deletion of user '$user_to_delete'? [y/N]: " confirm_delete
+			if [[ "$confirm_delete" =~ ^[yY]$ ]]; then
+				# Delete the user from the system
+				deluser "$user_to_delete"
 				echo
-				echo "$client revoked!"
+				echo "User '$user_to_delete' has been deleted."
 			else
 				echo
-				echo "$client revocation aborted!"
+				echo "User deletion aborted."
 			fi
 			exit
 		;;
