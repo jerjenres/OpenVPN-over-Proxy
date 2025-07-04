@@ -546,7 +546,18 @@ cipher none
 ignore-unknown-option block-outside-dns
 block-outside-dns
 verb 3" >> /etc/openvpn/server/client-common.txt
+	# Detect the correct OpenVPN service name
+	if systemctl list-unit-files | grep -q 'openvpn-server@'; then
+		service_name='openvpn-server@server.service'
+	elif systemctl list-unit-files | grep -q 'openvpn@'; then
+		service_name='openvpn@server.service'
+	else
+		echo "Could not find a valid OpenVPN service file."
+		exit 1
+	fi
+
 	# Enable and start the OpenVPN service
+	systemctl enable --now "$service_name"
 	systemctl enable --now openvpn-server@server.service
 	# Generates the custom client.ovpn
 	new_client
