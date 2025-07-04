@@ -558,7 +558,6 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 
 	# Enable and start the OpenVPN service
 	systemctl enable --now "$service_name"
-	systemctl enable --now openvpn-server@server.service
 	# Generates the custom client.ovpn
 	new_client
 	echo
@@ -784,7 +783,17 @@ else
 				if sestatus 2>/dev/null | grep "Current mode" | grep -q "enforcing" && [[ "$port" != 1194 ]]; then
 					semanage port -d -t openvpn_port_t -p "$protocol" "$port"
 				fi
-				systemctl disable --now openvpn-server@server.service
+				# Detect the correct OpenVPN service name to disable
+				if systemctl list-unit-files | grep -q 'openvpn-server@'; then
+					service_name='openvpn-server@server.service'
+				elif systemctl list-unit-files | grep -q 'openvpn@'; then
+					service_name='openvpn@server.service'
+				fi
+
+				if [[ -n "$service_name" ]]; then
+					systemctl disable --now "$service_name"
+				fi
+
 				rm -rf /etc/openvpn/server
 				rm -f /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
 				rm -f /etc/sysctl.d/30-openvpn-forward.conf
