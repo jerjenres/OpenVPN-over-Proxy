@@ -612,8 +612,8 @@ else
 			echo
 			echo "Provide a new username:"
 			read -p "Username: " username
-			# Check if the username is empty or already exists
-			while [[ -z "$username" || id -u "$username" &>/dev/null ]]; do
+			# Check if the username is empty or already exists     
+			while [ -z "$username" ] || id -u "$username" &>/dev/null; do
 				echo "Invalid username or user already exists."
 				read -p "Username: " username
 			done
