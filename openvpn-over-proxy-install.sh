@@ -354,12 +354,20 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 	cd /etc/openvpn/server/easy-rsa/
 	# Create the PKI, set up the CA and the server and client certificates
 	./easyrsa init-pki
-	echo 'set_var EASYRSA_BATCH "true"' > /etc/openvpn/server/easy-rsa/vars
-	echo 'set_var EASYRSA_PASSOUT ""' >> /etc/openvpn/server/easy-rsa/vars
-	./easyrsa build-ca
-	EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-server-full server nopass
-	# Move the stuff we need
-	cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key /etc/openvpn/server
+
+	# Instead of using vars file with EASYRSA_PASSOUT, use environment variables
+	export EASYRSA_BATCH="1"
+	export EASYRSA_REQ_CN="OpenVPN-CA"
+
+	# Build CA without password (use environment variable instead of vars file)
+	EASYRSA_BATCH=1 ./easyrsa build-ca nopass
+
+	# Build server certificate
+	EASYRSA_BATCH=1 EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-server-full server nopass
+
+	# Move the certificates to the OpenVPN directory
+	cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key /etc/openvpn/server/
+	
 	# Create the DH parameters file using the predefined ffdhe2048 group
 	echo '-----BEGIN DH PARAMETERS-----
 MIIBCAKCAQEA//////////+t+FRYortKmq/cViAnPTzx2LnFg84tNpWp4TZBFGQz
