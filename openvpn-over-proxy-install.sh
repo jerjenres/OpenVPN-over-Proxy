@@ -325,13 +325,14 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 	fi
 	if [[ "$os" = "debian" || "$os" = "ubuntu" ]]; then
 		apt-get update
-		apt-get install -y openvpn openssl ca-certificates $firewall
+		apt-get install -y openvpn openssl ca-certificates $firewall at
+
 	elif [[ "$os" = "centos" ]]; then
 		yum install -y epel-release
-		yum install -y openvpn openssl ca-certificates $firewall openvpn-plugin-auth-pam
+		yum install -y openvpn openssl ca-certificates $firewall at
 	else
 		# Else, OS must be Fedora
-		dnf install -y openvpn openssl ca-certificates $firewall openvpn-plugin-auth-pam
+		dnf install -y openvpn openssl ca-certificates $firewall at
 	fi
 	# If firewalld was just installed, enable it
 	if [[ "$firewall" == "firewalld" ]]; then
@@ -663,8 +664,16 @@ else
 			fi
 
 			# Create the user in the system with or without the expiration date
-			useradd -M -s /usr/sbin/nologin -g vpnusers $expire_date_cmd "$username"
-			echo "$username:$password" | chpasswd
+			if [[ "$total_minutes" -gt 0 ]]; then
+				useradd -M -s /usr/sbin/nologin -g vpnusers "$username"
+				echo "$username:$password" | chpasswd
+				echo "deluser $username" | at now + $total_minutes minutes
+				echo "User '$username' will expire in $total_minutes minutes."
+			else
+				useradd -M -s /usr/sbin/nologin -g vpnusers "$username"
+				echo "$username:$password" | chpasswd
+				echo "User '$username' will not expire."
+			fi
 
 			# Generate a new .ovpn file for this specific user
 			{
