@@ -354,8 +354,9 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 	cd /etc/openvpn/server/easy-rsa/
 	# Create the PKI, set up the CA and the server and client certificates
 	./easyrsa init-pki
-	echo "set_var EASYRSA_REQ_PASS \"\"" >> vars
-	./easyrsa --batch build-ca
+	echo 'set_var EASYRSA_BATCH "true"' > /etc/openvpn/server/easy-rsa/vars
+	echo 'set_var EASYRSA_PASSOUT ""' >> /etc/openvpn/server/easy-rsa/vars
+	./easyrsa build-ca
 	EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-server-full server nopass
 	# Move the stuff we need
 	cp pki/ca.crt pki/private/ca.key pki/issued/server.crt pki/private/server.key /etc/openvpn/server
