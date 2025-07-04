@@ -671,7 +671,7 @@ else
 			cat /etc/openvpn/server/client-common.txt
 			echo "<auth-user-pass>"
 			echo "$username"
-			 "$password"
+			echo "$password"
 			echo "</auth-user-pass>"
 			echo
 			echo "<ca>"
