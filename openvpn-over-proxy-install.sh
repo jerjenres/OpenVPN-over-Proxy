@@ -381,7 +381,7 @@ server 10.8.0.0 255.255.255.0
 
 # --- USERNAME/PASSWORD AUTHENTICATION ---
 plugin /usr/lib/openvpn/openvpn-plugin-auth-pam.so /etc/pam.d/login
-client-cert-not-required
+verify-client-cert none
 username-as-common-name
 duplicate-cn
 # --- END USERNAME/PASSWORD AUTHENTICATION ---
