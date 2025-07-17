@@ -570,6 +570,7 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 		mkdir -p /etc/systemd/system/squid.service.d/
 		echo "[Service]
 		LimitNOFILE=65536" > /etc/systemd/system/squid.service.d/override.conf
+		systemctl daemon-reload
 		cp /etc/squid/squid.conf /etc/squid/squid.conf.orig
 
 		# Write the new, permissive configuration for OpenVPN tunneling with custom headers
