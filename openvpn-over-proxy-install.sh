@@ -580,7 +580,7 @@ acl CONNECT method CONNECT
 acl OpenVPN_port port $port
 
 # Allow CONNECT requests that are trying to reach our OpenVPN server port.
-http_access allow CONNECT
+http_access allow CONNECT OpenVPN_port
 
 # Deny all other requests to prevent this from being an open proxy.
 http_access deny all
