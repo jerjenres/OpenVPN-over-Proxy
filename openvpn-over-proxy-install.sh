@@ -261,12 +261,12 @@ if [[ ! -e /etc/openvpn/server/server.conf ]]; then
 
 	echo
 	echo "What port should OpenVPN listen to?"
-	read -p "Port [1194]: " port
+	read -p "Port [443]: " port
 	until [[ -z "$port" || "$port" =~ ^[0-9]+$ && "$port" -le 65535 ]]; do
 		echo "$port: invalid port."
-		read -p "Port [1194]: " port
+		read -p "Port [443]: " port
 	done
-	[[ -z "$port" ]] && port="1194"
+	[[ -z "$port" ]] && port="443"
 	echo
 	echo "Select a DNS server for the clients:"
 	echo "   1) Current system resolvers"
@@ -347,6 +347,8 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
 	echo "$vpn_user:$vpn_password" | chpasswd
 
 	# Get easy-rsa
+	# Forcefully remove any old easy-rsa state to ensure a clean install
+	rm -rf /etc/openvpn/server/easy-rsa/
 	easy_rsa_url='https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.8/EasyRSA-3.0.8.tgz'
 	mkdir -p /etc/openvpn/server/easy-rsa/
 	{ wget -qO- "$easy_rsa_url" 2>/dev/null || curl -sL "$easy_rsa_url" ; } | tar xz -C /etc/openvpn/server/easy-rsa/ --strip-components 1
@@ -431,8 +433,8 @@ ifconfig-pool-persist ipp.txt" > /etc/openvpn/server/server.conf
 	esac
 	echo 'push "block-outside-dns"' >> /etc/openvpn/server/server.conf
 	echo "keepalive 10 120
-cipher none
-user nobody
+	cipher none
+	user nobody
 group $group_name
 persist-key
 persist-tun
@@ -447,10 +449,6 @@ verb 3" >> /etc/openvpn/server/server.conf
 	# Enable without waiting for a reboot or service restart
 	echo 1 > /proc/sys/net/ipv4/ip_forward
 
-	# Add TCP keepalive settings for connection stability through NAT/firewalls
-	echo 'net.ipv4.tcp_keepalive_time=120
-net.ipv4.tcp_keepalive_intvl=30
-net.ipv4.tcp_keepalive_probes=8' > /etc/sysctl.d/60-tcp-keepalive.conf
 	# Apply all sysctl settings without needing a reboot
 	sysctl --system
 	
@@ -544,6 +542,7 @@ persist-key
 persist-tun
 auth none
 cipher none
+ping-restart 0
 ignore-unknown-option block-outside-dns
 setenv CLIENT_CERT 0
 block-outside-dns
@@ -569,32 +568,37 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 		apt-get install squid -y
 		cp /etc/squid/squid.conf /etc/squid/squid.conf.orig
 
-		# Write the new, secure configuration for OpenVPN tunneling
-		echo "# This Squid configuration is tailored for OpenVPN tunneling.
-# It only allows the CONNECT method on the OpenVPN port, preventing abuse.
+		# Write the new, permissive configuration for OpenVPN tunneling with custom headers
+		echo "# This Squid configuration is tailored for OpenVPN tunneling with custom headers.
+# It allows all headers to pass through for maximum flexibility.
 
+# --- ACCESS RULES ---
 # Define the method used by OpenVPN to tunnel through the proxy
 acl CONNECT method CONNECT
 
 # Define the port our OpenVPN server is listening on.
-# Note: $port is the OpenVPN server port (e.g., 1194), NOT the proxy port.
 acl OpenVPN_port port $port
 
-# --- ACCESS RULES ---
-# Rules are checked in order. The first match wins.
+# Allow CONNECT requests that are trying to reach our OpenVPN server port.
+http_access allow CONNECT
 
-# 1. Allow CONNECT requests that are trying to reach our OpenVPN server port.
-#    This is the key rule. It allows the connection regardless of the hostname used.
-http_access allow CONNECT OpenVPN_port
-
-# 2. Deny all other requests.
-#    This is the firewall that prevents your proxy from being used for anything else.
+# Deny all other requests to prevent this from being an open proxy.
 http_access deny all
 
 # --- CONFIGURATION ---
 # Set the port for Squid to listen on
 http_port $proxy_port
 
+# --- HEADER MANIPULATION (FOR ZERO-RATING/BYPASS) ---
+# The following lines are crucial for making the traffic look like it's for a specific service.
+
+# Do not add a 'Via' header, which would reveal the proxy's presence.
+via off
+
+# Do not add the client's IP to an 'X-Forwarded-For' header.
+forwarded_for off
+
+# --- GENERAL SETTINGS ---
 # Set the coredump directory
 coredump_dir /var/spool/squid
 
