@@ -566,6 +566,10 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 	if [[ "$setupHTTPProxy" = "true" && "$os" != "none" ]]; then
 		apt-get update
 		apt-get install squid -y
+		# Set higher file descriptor limits for Squid to prevent connection warnings
+		mkdir -p /etc/systemd/system/squid.service.d/
+		echo "[Service]
+		LimitNOFILE=65536" > /etc/systemd/system/squid.service.d/override.conf
 		cp /etc/squid/squid.conf /etc/squid/squid.conf.orig
 
 		# Write the new, permissive configuration for OpenVPN tunneling with custom headers
