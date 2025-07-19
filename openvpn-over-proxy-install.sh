@@ -82,15 +82,19 @@ fi
 new_client () {
 	# Generates the custom client.ovpn
 	{
+	
 	cat /etc/openvpn/server/client-common.txt
-	echo "<ca>"
-	cat /etc/openvpn/server/easy-rsa/pki/ca.crt
-	echo "</ca>"
-
+	echo
 	echo "<auth-user-pass>"
 	echo "$vpn_user"
 	echo "$vpn_password"
 	echo "</auth-user-pass>"
+	echo
+	echo "<ca>"
+	cat /etc/openvpn/server/easy-rsa/pki/ca.crt
+	echo "</ca>"
+
+	
 	} > ~/"$client".ovpn
 }
 
@@ -563,6 +567,11 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 	new_client
 	echo
 	echo "Finished!"
+
+	# Create system-wide menu alias for all users
+	echo "alias menu='sudo bash $0 menu'" | sudo tee -a /etc/bash.bashrc > /dev/null
+	echo "Menu alias created for all users. Type 'menu' to access OpenVPN management."
+
 	if [[ "$setupHTTPProxy" = "true" && "$os" != "none" ]]; then
 		apt-get update
 		apt-get install squid -y
@@ -581,11 +590,12 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 # Define the method used by OpenVPN to tunnel through the proxy
 acl CONNECT method CONNECT
 
-# Define the port our OpenVPN server is listening on.
-acl OpenVPN_port port $port
+# Define the port and ip our OpenVPN server is listening on.
+# acl OpenVPN_port port $port
+acl OpenVPN_IP dst $ip
 
-# Allow CONNECT requests that are trying to reach our OpenVPN server port.
-http_access allow CONNECT OpenVPN_port
+# Allow CONNECT requests that are trying to reach our OpenVPN server.
+http_access allow CONNECT OpenVPN_IP
 
 # Deny all other requests to prevent this from being an open proxy.
 http_access deny all
@@ -676,11 +686,13 @@ else
 			# Create the user in the system with or without the expiration date
 			if [[ "$total_minutes" -gt 0 ]]; then
 				useradd -M -s /usr/sbin/nologin -g vpnusers "$username"
+				usermod -a -G vpnusers "$username"
 				echo "$username:$password" | chpasswd
-				echo "deluser $username" | at now + $total_minutes minutes
+				echo "deluser $username 2>/dev/null || userdel $username 2>/dev/null" | at now + $total_minutes minutes
 				echo "User '$username' will expire in $total_minutes minutes."
 			else
 				useradd -M -s /usr/sbin/nologin -g vpnusers "$username"
+				usermod -a -G vpnusers "$username"
 				echo "$username:$password" | chpasswd
 				echo "User '$username' will not expire."
 			fi
@@ -688,6 +700,7 @@ else
 			# Generate a new .ovpn file for this specific user
 			{
 			cat /etc/openvpn/server/client-common.txt
+			echo
 			echo "<auth-user-pass>"
 			echo "$username"
 			echo "$password"
@@ -705,19 +718,33 @@ else
 		;;
 		2)
 			# Get the list of users in the vpnusers group
-			mapfile -t user_list < <(getent group vpnusers | cut -d: -f4 | sed 's/,/\n/g' | grep -v '^$')
-			number_of_users=${#user_list[@]}
+			if getent group vpnusers >/dev/null 2>&1; then
+				user_list=($(getent group vpnusers | cut -d: -f4 | tr ',' ' '))
+			else
+				user_list=()
+			fi
+
+			# Filter out empty entries
+			filtered_users=()
+			for user in "${user_list[@]}"; do
+				if [ -n "$user" ] && id "$user" >/dev/null 2>&1; then
+					filtered_users+=("$user")
+				fi
+			done
+			
+			number_of_users=${#filtered_users[@]}
 
 			if [[ "$number_of_users" = 0 ]]; then
 				echo
 				echo "There are no VPN users to delete!"
 				exit
 			fi
+			
 			echo
 			echo "Select the user to delete:"
 			# Display the list of users
-			for i in "${!user_list[@]}"; do
-				printf "   %s) %s\n" "$((i+1))" "${user_list[$i]}"
+			for i in "${!filtered_users[@]}"; do
+				printf "   %s) %s\n" "$((i+1))" "${filtered_users[$i]}"
 			done
 			read -p "User: " user_number
 			until [[ "$user_number" =~ ^[0-9]+$ && "$user_number" -ge 1 && "$user_number" -le "$number_of_users" ]]; do
@@ -725,13 +752,15 @@ else
 				read -p "User: " user_number
 			done
 
-			user_to_delete="${user_list[$((user_number-1))]}"
+			user_to_delete="${filtered_users[$((user_number-1))]}"
 
 			echo
 			read -p "Confirm deletion of user '$user_to_delete'? [y/N]: " confirm_delete
 			if [[ "$confirm_delete" =~ ^[yY]$ ]]; then
 				# Delete the user from the system
-				deluser "$user_to_delete"
+				deluser "$user_to_delete" 2>/dev/null || userdel "$user_to_delete" 2>/dev/null
+				# Remove user's config file if it exists
+				rm -f ~/"$user_to_delete".ovpn
 				echo
 				echo "User '$user_to_delete' has been deleted."
 			else
@@ -777,6 +806,41 @@ else
 						;;
 					esac
 				fi
+				{# Clean up VPN users and group
+				echo "Cleaning up VPN users..."
+
+				# Method 1: Remove users from vpnusers group (if any)
+				if getent group vpnusers >/dev/null 2>&1; then
+					for user in $(getent group vpnusers | cut -d: -f4 | tr ',' ' '); do
+						if [ -n "$user" ]; then
+							echo "Removing user from group: $user"
+							deluser "$user" 2>/dev/null || userdel "$user" 2>/dev/null
+							rm -f ~/"$user".ovpn
+						fi
+					done
+				fi
+
+				# Method 2: Remove users by shell pattern (more comprehensive)
+				# Find users with /usr/sbin/nologin shell (VPN users typically have this)
+				for user in $(awk -F: '$7=="/usr/sbin/nologin" && $3>=1000 {print $1}' /etc/passwd); do
+					# Check if this looks like a VPN user (has .ovpn file or was in vpnusers group)
+					if [[ -f ~/"$user".ovpn ]] || groups "$user" 2>/dev/null | grep -q vpnusers; then
+						echo "Removing VPN user: $user"
+						deluser "$user" 2>/dev/null || userdel "$user" 2>/dev/null
+						rm -f ~/"$user".ovpn
+					fi
+				done
+
+				# Remove the vpnusers group
+				if getent group vpnusers >/dev/null 2>&1; then
+					echo "Removing vpnusers group..."
+					groupdel vpnusers 2>/dev/null
+				fi
+
+				# Cancel any pending user expiration jobs
+				echo "Cancelling pending user expiration jobs..."
+				atq | awk '{print $1}' | xargs -r atrm 2>/dev/null}
+
 				port=$(grep '^port ' /etc/openvpn/server/server.conf | cut -d " " -f 2)
 				protocol=$(grep '^proto ' /etc/openvpn/server/server.conf | cut -d " " -f 2)
 				if systemctl is-active --quiet firewalld.service; then
@@ -826,6 +890,10 @@ else
 
 				echo
 				echo "OpenVPN over Proxy removed!"
+
+				# Remove system-wide menu alias
+				sudo sed -i '/alias menu=.*menu/d' /etc/bash.bashrc
+				echo "Menu alias removed for all users."
 			else
 				echo
 				echo "OpenVPN over Proxy removal aborted!"
