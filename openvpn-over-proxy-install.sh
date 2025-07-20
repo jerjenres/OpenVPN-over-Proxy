@@ -568,8 +568,16 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 	echo
 	echo "Finished!"
 
-	# Create system-wide menu alias for all users
-	echo "alias menu='sudo bash $0 menu'" | sudo tee -a /etc/bash.bashrc > /dev/null
+	sudo cp "$0" /usr/local/bin/openvpn-menu
+	sudo chmod +x /usr/local/bin/openvpn-menu
+	echo "alias menu='sudo /usr/local/bin/openvpn-menu menu'" | sudo tee -a /etc/bash.bashrc > /dev/null
+	
+	# Also add to zsh if it exists
+	if [ -f /etc/zsh/zshrc ]; then
+		echo "alias menu='sudo /usr/local/bin/openvpn-menu menu'" | sudo tee -a /etc/zsh/zshrc > /dev/null
+	fi
+
+	echo "OpenVPN management script installed to /usr/local/bin/openvpn-menu"
 	echo "Menu alias created for all users. Type 'menu' to access OpenVPN management."
 
 	if [[ "$setupHTTPProxy" = "true" && "$os" != "none" ]]; then
@@ -891,9 +899,15 @@ else
 				echo
 				echo "OpenVPN over Proxy removed!"
 
-				# Remove system-wide menu alias
+				# Remove system-wide menu alias and script
 				sudo sed -i '/alias menu=.*menu/d' /etc/bash.bashrc
-				echo "Menu alias removed for all users."
+				# Also remove from zsh if it exists
+				if [ -f /etc/zsh/zshrc ]; then
+					sudo sed -i '/alias menu=.*menu/d' /etc/zsh/zshrc
+				fi
+				# Remove the system-wide script
+				sudo rm -f /usr/local/bin/openvpn-menu
+				echo "Menu alias and system script removed for all users."
 			else
 				echo
 				echo "OpenVPN over Proxy removal aborted!"
