@@ -568,7 +568,9 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 	echo
 	echo "Finished!"
 
-	sudo cp "$0" /usr/local/bin/openvpn-menu
+	# Get the absolute path of the script
+	SCRIPT_PATH=$(realpath "$0")
+	sudo cp "$SCRIPT_PATH" /usr/local/bin/openvpn-menu
 	sudo chmod +x /usr/local/bin/openvpn-menu
 	echo "alias menu='sudo /usr/local/bin/openvpn-menu menu'" | sudo tee -a /etc/bash.bashrc > /dev/null
 	
