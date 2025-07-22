@@ -4,6 +4,8 @@
 #
 # Copyright (c) 2020 Null3rror. Released under the MIT License.
 
+# Store the absolute path of this script before any directory changes
+SCRIPT_PATH=$(realpath "$0")
 
 # Detect Debian users running the script with "sh" instead of bash
 if readlink /proc/$$/exe | grep -q "dash"; then
@@ -568,8 +570,6 @@ verb 3" >> /etc/openvpn/server/client-common.txt
 	echo
 	echo "Finished!"
 
-	# Get the absolute path of the script
-	SCRIPT_PATH=$(realpath "$0")
 	sudo cp "$SCRIPT_PATH" /usr/local/bin/openvpn-menu
 	sudo chmod +x /usr/local/bin/openvpn-menu
 	echo "alias menu='sudo /usr/local/bin/openvpn-menu menu'" | sudo tee -a /etc/bash.bashrc > /dev/null
