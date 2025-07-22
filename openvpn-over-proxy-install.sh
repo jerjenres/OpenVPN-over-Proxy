@@ -281,10 +281,10 @@ if [[ ! -e /etc/openvpn/server/server.conf ]]; then
 	echo "   4) OpenDNS"
 	echo "   5) Quad9"
 	echo "   6) AdGuard"
-	read -p "DNS server [1]: " dns
+	read -p "DNS server [2]: " dns
 	until [[ -z "$dns" || "$dns" =~ ^[1-6]$ ]]; do
 		echo "$dns: invalid selection."
-		read -p "DNS server [1]: " dns
+		read -p "DNS server [2]: " dns
 	done
 	echo
 	echo "Enter a name for the first client:"
@@ -406,7 +406,7 @@ ifconfig-pool-persist ipp.txt" > /etc/openvpn/server/server.conf
 	fi
 	# DNS
 	case "$dns" in
-		1|"")
+		1)
 			if grep -q '^nameserver 127.0.0.53' "/etc/resolv.conf"; then
 				resolv_conf="/run/systemd/resolve/resolv.conf"
 			else
@@ -416,7 +416,7 @@ ifconfig-pool-persist ipp.txt" > /etc/openvpn/server/server.conf
 				echo "push \"dhcp-option DNS $line\"" >> /etc/openvpn/server/server.conf
 			done
 		;;
-		2)
+		2|"")
 			echo 'push "dhcp-option DNS 8.8.8.8"' >> /etc/openvpn/server/server.conf
 			echo 'push "dhcp-option DNS 8.8.4.4"' >> /etc/openvpn/server/server.conf
 		;;
