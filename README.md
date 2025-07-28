@@ -25,7 +25,7 @@ Run the script and follow the assistant:
 sudo wget https://raw.githubusercontent.com/jerjenres/OpenVPN-over-Proxy/master/openvpn-over-proxy-install.sh -O openvpn-over-proxy-install.sh && sudo bash openvpn-over-proxy-install.sh
 ```
 
-v2ray
+v2ray from [HirbodBehnam](https://github.com/HirbodBehnam/V2Ray-Installer/tree/master)
 ```bash
 sudo wget https://raw.githubusercontent.com/jerjenres/OpenVPN-over-Proxy/master/v2ray.sh -O v2ray.sh && sudo bash v2ray.sh
 ```
