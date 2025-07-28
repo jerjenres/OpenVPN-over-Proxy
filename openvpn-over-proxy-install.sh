@@ -439,8 +439,8 @@ ifconfig-pool-persist ipp.txt" > /etc/openvpn/server/server.conf
 	esac
 	echo 'push "block-outside-dns"' >> /etc/openvpn/server/server.conf
 	echo "keepalive 10 120
-	cipher none
-	user nobody
+cipher none
+user nobody
 group $group_name
 persist-key
 persist-tun
