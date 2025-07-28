@@ -25,6 +25,11 @@ Run the script and follow the assistant:
 sudo wget https://raw.githubusercontent.com/jerjenres/OpenVPN-over-Proxy/master/openvpn-over-proxy-install.sh -O openvpn-over-proxy-install.sh && sudo bash openvpn-over-proxy-install.sh
 ```
 
+v2ray
+```bash
+sudo wget https://raw.githubusercontent.com/jerjenres/OpenVPN-over-Proxy/master/v2ray.sh -O v2ray.sh && sudo bash v2ray.sh
+```
+
 Once it ends, you can run it again to add more users, remove some of them or even completely uninstall OpenVPN over HTTP.
 
 ## Quick look on usage
